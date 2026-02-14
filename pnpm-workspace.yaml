@@ -1,3 +1,5 @@
+allowedBuildScripts: bcrypt
+
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
