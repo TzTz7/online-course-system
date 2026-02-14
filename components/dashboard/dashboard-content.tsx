@@ -52,15 +52,18 @@ export function DashboardContent() {
   return (
     <div className="p-4 pt-16 md:pt-6 md:p-6 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground text-balance">欢迎回来，同学</h1>
-        <p className="text-muted-foreground mt-1">今天是学习的好日子，继续加油吧</p>
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary/10 via-accent/5 to-primary/10 p-6">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,hsl(var(--primary)/0.1),transparent_50%)]" />
+        <div className="relative">
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground text-balance">欢迎回来，同学</h1>
+          <p className="text-muted-foreground mt-2 text-sm md:text-base">今天是学习的好日子，继续加油吧</p>
+        </div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat) => (
-          <Card key={stat.label} className="border-border/50 shadow-sm">
+          <Card key={stat.label} className="border-border/50 shadow-sm hover:shadow-lg hover:border-primary/20 transition-all duration-200 cursor-pointer">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className={`flex items-center justify-center w-10 h-10 rounded-xl ${stat.color}`}>
@@ -82,14 +85,14 @@ export function DashboardContent() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
           {quickActions.map((action) => (
             <Link key={action.href} href={action.href}>
-              <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow cursor-pointer group h-full">
+              <Card className="border-border/50 shadow-sm hover:shadow-lg hover:border-primary/30 transition-all duration-200 cursor-pointer group h-full">
                 <CardContent className="p-4 flex flex-col items-center text-center gap-3">
-                  <div className={`flex items-center justify-center w-12 h-12 rounded-2xl ${action.color} text-primary-foreground group-hover:scale-110 transition-transform`}>
+                  <div className={`flex items-center justify-center w-12 h-12 rounded-2xl ${action.color} text-primary-foreground group-hover:scale-110 transition-transform duration-200`}>
                     <action.icon className="w-6 h-6" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-foreground">{action.label}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5 hidden md:block">{action.desc}</p>
+                    <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors">{action.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 hidden md:block group-hover:text-foreground/70 transition-colors">{action.desc}</p>
                   </div>
                 </CardContent>
               </Card>
@@ -110,7 +113,7 @@ export function DashboardContent() {
           </div>
           <div className="grid sm:grid-cols-2 gap-3">
             {recentCourses.map((course) => (
-              <Card key={course.name} className="border-border/50 shadow-sm">
+              <Card key={course.name} className="border-border/50 shadow-sm hover:shadow-lg hover:border-primary/20 transition-all duration-200 cursor-pointer">
                 <CardContent className="p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-semibold text-foreground">{course.name}</h3>
@@ -130,12 +133,12 @@ export function DashboardContent() {
         {/* Announcements */}
         <div>
           <h2 className="text-lg font-semibold text-foreground mb-3">最新通知</h2>
-          <Card className="border-border/50 shadow-sm">
+          <Card className="border-border/50 shadow-sm hover:shadow-lg transition-all duration-200">
             <CardContent className="p-0">
               {announcements.map((item, i) => (
                 <div
                   key={i}
-                  className="flex items-start gap-3 p-4 border-b border-border/50 last:border-b-0 hover:bg-secondary/50 transition-colors cursor-pointer"
+                  className="flex items-start gap-3 p-4 border-b border-border/50 last:border-b-0 hover:bg-secondary/50 hover:px-5 transition-all duration-200 cursor-pointer"
                 >
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium shrink-0 mt-0.5 ${
                     item.type === "考试" ? "bg-destructive/10 text-destructive" :
@@ -157,7 +160,7 @@ export function DashboardContent() {
       </div>
 
       {/* Online users */}
-      <Card className="border-border/50 shadow-sm">
+      <Card className="border-border/50 shadow-sm hover:shadow-lg hover:border-success/20 transition-all duration-200">
         <CardContent className="p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -174,7 +177,7 @@ export function DashboardContent() {
                 <p className="text-2xl font-bold text-foreground">1,234</p>
                 <p className="text-xs text-[hsl(var(--success))]">+12% 较昨日</p>
               </div>
-              <Link href="/chatroom" className="flex items-center gap-1 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors">
+              <Link href="/chatroom" className="flex items-center gap-1 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 hover:scale-105 transition-all duration-200 cursor-pointer">
                 <MessageSquare className="w-4 h-4" />
                 <span className="hidden sm:inline">进入聊天室</span>
               </Link>
