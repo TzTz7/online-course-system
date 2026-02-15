@@ -4,6 +4,7 @@ import { useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
+import { signOutAction } from "@/lib/actions"
 import {
   BookOpen,
   GraduationCap,
@@ -19,6 +20,7 @@ import {
   Users,
   Menu,
   X,
+  LogOut,
 } from "lucide-react"
 
 const navItems = [
@@ -117,7 +119,7 @@ export function SidebarNav() {
         </nav>
 
         {/* User section */}
-        <div className="p-3 border-t border-border">
+        <div className="p-3 border-t border-border space-y-2">
           <div className={cn("flex items-center gap-3 px-3 py-2", collapsed && "justify-center")}>
             <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary shrink-0">
               <Users className="w-4 h-4" />
@@ -129,6 +131,20 @@ export function SidebarNav() {
               </div>
             )}
           </div>
+          
+          {/* Logout button */}
+          <form action={signOutAction}>
+            <button
+              type="submit"
+              className={cn(
+                "flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-200 cursor-pointer",
+                collapsed && "justify-center px-0"
+              )}
+            >
+              <LogOut className="w-5 h-5 shrink-0" />
+              {!collapsed && <span>退出登录</span>}
+            </button>
+          </form>
         </div>
 
         {/* Collapse toggle (desktop only) */}
