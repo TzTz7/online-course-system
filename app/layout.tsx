@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from 'next'
 import { Inter, Noto_Sans_SC } from 'next/font/google'
 
 import './globals.css'
+import { Providers } from './providers'
+import { auth } from '@/auth'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const notoSansSC = Noto_Sans_SC({ subsets: ['latin'], variable: '--font-noto-sc', weight: ['400', '500', '600', '700'] })
@@ -19,14 +21,18 @@ export const viewport: Viewport = {
   themeColor: '#3B82F6',
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const session = await auth()
+  
   return (
     <html lang="zh-CN">
-      <body className={`${inter.variable} ${notoSansSC.variable} font-sans antialiased`}>{children}</body>
+      <body className={`${inter.variable} ${notoSansSC.variable} font-sans antialiased`}>
+        <Providers session={session}>{children}</Providers>
+      </body>
     </html>
   )
 }

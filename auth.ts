@@ -1,10 +1,10 @@
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
-import { authConfig } from './auth.config';
 import { z } from 'zod';
 import bcrypt from 'bcrypt';
 import postgres from 'postgres';
 import type { User } from '@/lib/definitions';
+
 
 const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
@@ -22,13 +22,24 @@ async function getUser(email: string): Promise<User | undefined> {
   }
 }
 
-export const { auth, signIn, signOut } = NextAuth({
-  ...authConfig,
+export const { auth, handlers, signIn, signOut } = NextAuth({
+  pages:{
+    signIn: '/login',
+  },
   providers: [
     Credentials({
-      async authorize(credentials) {
+
+      credentials: {
+        email: {},
+        password: {},
+      },
+
+      authorize: async (credentials) => {
         const parsedCredentials = z
-          .object({ email: z.string().email(), password: z.string().min(6) })
+          .object({ 
+                    email: z.string().email(),
+                    password: z.string().min(6),
+                  })
           .safeParse(credentials);
 
         if (parsedCredentials.success) {
@@ -42,6 +53,27 @@ export const { auth, signIn, signOut } = NextAuth({
 
         return null;
       },
+
     }),
   ],
+  callbacks: {
+    authorized: async ({ auth }) => {
+      // Logged in users are authenticated, otherwise redirect to login page
+      return !!auth
+    },
+    async jwt({ token, user }) {
+      if (user) {
+        token.id = user.id;
+        token.role = user.role;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (token) {
+        session.user.id = token.id!;
+        session.user.role = token.role!;
+      }
+      return session;
+    },
+  },
 });

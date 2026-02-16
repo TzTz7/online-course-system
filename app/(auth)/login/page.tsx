@@ -1,7 +1,14 @@
 import { Suspense } from 'react';
 import { LoginForm } from '@/components/auth/login-form';
 
-export default function LoginPage() {
+interface LoginPageProps {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
+  const params = await searchParams
+  const callbackUrl = typeof params.callbackUrl === 'string' ? params.callbackUrl : '/'
+
   return (
     <div className="min-h-screen flex items-center justify-center relative overflow-hidden">
       {/* Background gradient */}
@@ -20,7 +27,7 @@ export default function LoginPage() {
             <div className="w-8 h-8 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
           </div>
         }>
-          <LoginForm />
+          <LoginForm callbackUrl={callbackUrl} />
         </Suspense>
       </div>
     </div>

@@ -1,6 +1,6 @@
 'use server';
 
-import { signIn, signOut } from '@/auth/auth';
+import { signIn, signOut } from '@/auth';
 import { AuthError } from 'next-auth';
 import { z } from 'zod';
 import postgres from 'postgres';
