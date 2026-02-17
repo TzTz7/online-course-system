@@ -1,6 +1,8 @@
 "use client"
 
 import Link from "next/link"
+import { useEffect } from "react"
+import { useSession } from "next-auth/react"
 import {
   BookOpen,
   Brain,
@@ -49,13 +51,22 @@ const announcements = [
 ]
 
 export function DashboardContent() {
+  const { data: session, update } = useSession()
+  
+  useEffect(() => {
+    // 只在组件挂载时自动刷新一次 session
+    update()
+  }, [])
+  
+  const userName = session?.user?.name || "同学"
+  
   return (
     <div className="p-4 pt-16 md:pt-6 md:p-6 space-y-6">
       {/* Header */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary/10 via-accent/5 to-primary/10 p-6">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_50%,hsl(var(--primary)/0.1),transparent_50%)]" />
         <div className="relative">
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground text-balance">欢迎回来，同学</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground text-balance">欢迎回来，{userName}</h1>
           <p className="text-muted-foreground mt-2 text-sm md:text-base">今天是学习的好日子，继续加油吧</p>
         </div>
       </div>

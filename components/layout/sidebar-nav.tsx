@@ -32,7 +32,6 @@ const navItems = [
 export function SidebarNav() {
   const { data: session } = useSession()
   const user = session?.user
-  
   return (
     <SidebarWrapper>
       {({ collapsed, mobileOpen, pathname, setMobileOpen }) => (

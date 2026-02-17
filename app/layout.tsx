@@ -31,7 +31,7 @@ export default async function RootLayout({
   return (
     <html lang="zh-CN">
       <body className={`${inter.variable} ${notoSansSC.variable} font-sans antialiased`}>
-        <Providers session={session}>{children}</Providers>
+        <Providers>{children}</Providers>
       </body>
     </html>
   )

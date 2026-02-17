@@ -1,6 +1,7 @@
 'use client'
 
-import { useActionState } from 'react'
+import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { GraduationCap, Mail, Lock, AlertCircle, ArrowRight } from 'lucide-react'
 import { authenticate } from '@/lib/actions'
@@ -12,10 +13,23 @@ interface LoginFormClientProps {
 }
 
 export function LoginFormClient({ callbackUrl }: LoginFormClientProps) {
-  const [errorMessage, formAction, isPending] = useActionState(
-    authenticate,
-    undefined,
-  )
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined)
+
+  const handleSubmit = async (formData: FormData) => {
+    startTransition(async () => {
+      const result = await authenticate(undefined, formData)
+      if (result) {
+        setErrorMessage(result)
+      } else {
+        // 登录成功，刷新数据并跳转到首页
+        
+        router.push('/')
+        router.refresh()
+      }
+    })
+  }
 
   return (
     <Card className="border-border/50 shadow-xl bg-card/80 backdrop-blur-sm">
@@ -30,7 +44,7 @@ export function LoginFormClient({ callbackUrl }: LoginFormClientProps) {
             <p className="text-sm text-muted-foreground">登录您的 SmartEdu 账号</p>
           </div>
 
-          <form action={formAction} className="space-y-4">
+          <form action={handleSubmit} className="space-y-4">
             {/* Email */}
             <div className="space-y-2">
               <label htmlFor="email" className="text-sm font-medium text-foreground">
