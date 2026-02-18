@@ -3,11 +3,9 @@
 import { signIn, signOut } from '@/auth';
 import { AuthError } from 'next-auth';
 import { z } from 'zod';
-import postgres from 'postgres';
+import { sql } from './db';
 import bcrypt from 'bcrypt';
 import type { User } from './definitions';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 const RegisterSchema = z.object({
   name: z.string().min(2, { message: '名字至少需要 2 个字符' }),

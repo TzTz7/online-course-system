@@ -1,7 +1,5 @@
-import postgres from 'postgres';
+import { sql } from './db';
 import type { User } from './definitions';
-
-const sql = postgres(process.env.POSTGRES_URL!, { ssl: 'require' });
 
 export async function getUser(email: string): Promise<User | undefined> {
   try {
