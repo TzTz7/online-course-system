@@ -1,10 +1,22 @@
+import { auth } from "@/auth"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
-import { ExamsContent } from "@/components/exams/exams-content"
+import { ExamsClient } from "@/components/exams/exams-client"
 
-export default function ExamsPage() {
+interface PageProps {
+  searchParams: Promise<{ tab?: string }>
+}
+
+export default async function ExamsPage({ searchParams }: PageProps) {
+  const params = await searchParams
+  const tab = params.tab === "bank" ? "bank" : "papers"
+  
+  const session = await auth()
+  const userRole = (session?.user?.role as "student" | "teacher" | "admin") || "student"
+  const userId = session?.user?.id || ""
+
   return (
     <DashboardLayout>
-      <ExamsContent />
+      <ExamsClient initialTab={tab} userRole={userRole} userId={userId} />
     </DashboardLayout>
   )
 }
