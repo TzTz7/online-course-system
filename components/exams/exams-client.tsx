@@ -245,10 +245,11 @@ function QuestionCardWithAnswer({ question, isTeacher }: { question: QuestionBan
     if (Array.isArray(correctAnswer)) {
       return correctAnswer.map(a => {
         if (options) {
-          const opt = options.find(o => o.id === a.id || o.id === a)
-          return opt ? opt.text : a.id || a
+          const answerId = typeof a === 'object' ? a.id : a
+          const opt = options.find(o => String(o.id) === String(answerId))
+          return opt ? opt.text : String(answerId)
         }
-        return a.id || a
+        return typeof a === 'object' ? a.id : a
       }).join(", ")
     }
     return String(correctAnswer)

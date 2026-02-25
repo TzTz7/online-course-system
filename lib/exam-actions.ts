@@ -115,86 +115,6 @@ export async function fetchExams(params: { courseId?: string; status?: string; l
   }
 }
 
-export async function fetchExamById(examId: string): Promise<(Exam & { questions: any[] }) | null> {
-  try {
-    const exams = await sql<Exam[]>`
-      SELECT e.id, e.title, e.description, e.course_id, e.duration, e.total_score, e.shuffle_questions, 
-             e.question_count, e.start_time, e.end_time, e.status, e.created_by, e.created_at, e.updated_at,
-             c.title as course_name, u.name as creator_name
-      FROM exams e
-      LEFT JOIN courses c ON e.course_id = c.id
-      LEFT JOIN users u ON e.created_by = u.id
-      WHERE e.id = ${examId}
-    `
-
-    if (!exams[0]) return null
-
-    const examQuestions = await sql<any[]>`
-      SELECT eq.id, eq.exam_id, eq.question_id, eq.score, eq.sort_order, eq.created_at,
-             q.id as q_id, q.course_id as q_course_id, q.type as q_type, q.title as q_title, 
-             q.options as q_options, q.answer as q_answer, q.score as q_score, 
-             q.created_at as q_created_at, q.updated_at as q_updated_at
-      FROM exam_questions eq
-      JOIN questions q ON eq.question_id = q.id
-      WHERE eq.exam_id = ${examId}
-      ORDER BY eq.sort_order
-    `
-
-    const questions = examQuestions.map(eq => ({
-      id: eq.id,
-      exam_id: eq.exam_id,
-      question_id: eq.question_id,
-      score: eq.score,
-      sort_order: eq.sort_order,
-      created_at: eq.created_at,
-      question: eq.q_id ? {
-        id: eq.q_id,
-        course_id: eq.q_course_id,
-        type: eq.q_type,
-        title: eq.q_title,
-        options: eq.q_options,
-        answer: eq.q_answer,
-        score: eq.q_score,
-        created_at: eq.q_created_at,
-        updated_at: eq.q_updated_at
-      } : undefined
-    }))
-
-    return { ...exams[0], questions }
-  } catch (error) {
-    console.error('Failed to fetch exam:', error)
-    return null
-  }
-}
-
-export async function fetchExamAttempts(examId: string, userId?: string): Promise<ExamAttempt[]> {
-  try {
-    let attempts: ExamAttempt[] = []
-    if (userId) {
-      attempts = await sql<ExamAttempt[]>`
-        SELECT ea.id, ea.exam_id, ea.user_id, ea.start_time, ea.submit_time, ea.score, ea.total_score, 
-               ea.status, ea.created_at, ea.updated_at
-        FROM exam_attempts ea
-        WHERE ea.exam_id = ${examId} AND ea.user_id = ${userId}
-        ORDER BY ea.created_at DESC
-      `
-    } else {
-      attempts = await sql<ExamAttempt[]>`
-        SELECT ea.id, ea.exam_id, ea.user_id, ea.start_time, ea.submit_time, ea.score, ea.total_score, 
-               ea.status, ea.created_at, ea.updated_at, u.name as user_name
-        FROM exam_attempts ea
-        LEFT JOIN users u ON ea.user_id = u.id
-        WHERE ea.exam_id = ${examId}
-        ORDER BY ea.created_at DESC
-      `
-    }
-    return attempts
-  } catch (error) {
-    console.error('Failed to fetch exam attempts:', error)
-    return []
-  }
-}
-
 export async function createExamAttempt(data: { exam_id: string; user_id: string; total_score: number }): Promise<ExamAttempt | null> {
   try {
     const result = await sql<ExamAttempt[]>`
@@ -292,31 +212,6 @@ export async function fetchCourses(): Promise<{ id: string; title: string }[]> {
   }
 }
 
-export async function fetchQuestionsByType(courseId?: string, type?: string, limit: number = 100): Promise<QuestionBank[]> {
-  try {
-    let query = sql<QuestionBank[]>`
-      SELECT q.id, q.course_id, q.type, q.title, q.options, q.answer, q.score, q.created_at, q.updated_at, c.title as course_name
-      FROM questions q
-      LEFT JOIN courses c ON q.course_id = c.id
-      WHERE 1=1
-    `
-    
-    if (courseId) {
-      query = sql`${query} AND q.course_id = ${courseId}`
-    }
-    if (type) {
-      query = sql`${query} AND q.type = ${type}`
-    }
-    
-    query = sql`${query} ORDER BY RANDOM() LIMIT ${limit}`
-    
-    return query
-  } catch (error) {
-    console.error('Failed to fetch questions by type:', error)
-    return []
-  }
-}
-
 export async function randomSelectQuestions(params: {
   courseId?: string
   counts: Record<string, number>
@@ -343,5 +238,99 @@ export async function randomSelectQuestions(params: {
   } catch (error) {
     console.error('Failed to random select questions:', error)
     return []
+  }
+}
+
+export async function randomSelectQuestionsSimple(count: number, courseId?: string): Promise<QuestionBank[]> {
+  try {
+    if (count <= 0) return []
+    
+    const questions = await sql<QuestionBank[]>`
+      SELECT q.id, q.course_id, q.type, q.title, q.options, q.answer, q.score, q.created_at, q.updated_at, c.title as course_name
+      FROM questions q
+      LEFT JOIN courses c ON q.course_id = c.id
+      ${courseId ? sql`WHERE q.course_id = ${courseId}` : sql``}
+      ORDER BY RANDOM()
+      LIMIT ${count}
+    `
+    
+    return questions
+  } catch (error) {
+    console.error('Failed to random select questions:', error)
+    return []
+  }
+}
+
+function checkAnswerEqual(userAnswers: string[], correctAnswer: any): boolean {
+  if (!userAnswers || userAnswers.length === 0) return false
+  if (!correctAnswer) return false
+  
+  let correctValues: string[] = []
+  
+  if (typeof correctAnswer === 'string') {
+    correctValues = [correctAnswer]
+  } else if (Array.isArray(correctAnswer)) {
+    correctValues = correctAnswer.map((a: any) => String(a.id ?? a))
+  } else if (typeof correctAnswer === 'object' && correctAnswer !== null) {
+    correctValues = [String(correctAnswer.id ?? correctAnswer.value)]
+  }
+  
+  if (correctValues.length === 0) return false
+  
+  const userSet = new Set(userAnswers.map(u => u.toLowerCase()))
+  const correctSet = new Set(correctValues.map(c => c.toLowerCase()))
+  
+  if (userSet.size !== correctSet.size) return false
+  
+  for (const val of correctSet) {
+    if (!userSet.has(val)) return false
+  }
+  
+  return true
+}
+
+export async function submitExam(
+  examId: string, 
+  attemptId: string, 
+  answers: Record<string, string[]>
+): Promise<{ score: number; correctCount: number; totalQuestions: number }> {
+  try {
+    const examQuestions = await sql<{ id: string; question_id: string; score: number; answer: any }[]>`
+      SELECT eq.id, eq.question_id, eq.score, q.answer
+      FROM exam_questions eq
+      JOIN questions q ON eq.question_id = q.id
+      WHERE eq.exam_id = ${examId}
+    `
+    
+    let score = 0
+    let correctCount = 0
+    
+    for (const eq of examQuestions) {
+      const userAnswer = answers[eq.question_id] || []
+      const correctAnswer = eq.answer
+      
+      if (checkAnswerEqual(userAnswer, correctAnswer)) {
+        correctCount++
+        score += eq.score
+      }
+    }
+    
+    await sql`
+      UPDATE exam_attempts 
+      SET score = ${score}, 
+          status = 'submitted', 
+          submit_time = NOW(),
+          updated_at = NOW()
+      WHERE id = ${attemptId}
+    `
+    
+    return {
+      score,
+      correctCount,
+      totalQuestions: examQuestions.length
+    }
+  } catch (error) {
+    console.error('Failed to submit exam:', error)
+    return { score: 0, correctCount: 0, totalQuestions: 0 }
   }
 }

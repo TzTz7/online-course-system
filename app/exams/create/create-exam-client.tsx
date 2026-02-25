@@ -2,14 +2,14 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Plus, X, Check, Shuffle, RefreshCw, FileText, Save, Sparkles } from "lucide-react"
+import { ArrowLeft, Plus, X, Check, RefreshCw, FileText, Save } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { createExam, fetchQuestions, fetchCourses, randomSelectQuestions } from "@/lib/exam-actions"
+import { createExam, fetchQuestions, fetchCourses, randomSelectQuestionsSimple } from "@/lib/exam-actions"
 import type { QuestionBank } from "@/lib/definitions"
 import { cn } from "@/lib/utils"
 
@@ -21,15 +21,6 @@ const typeLabels: Record<string, string> = {
   essay: "论述题",
   true_false: "是非题"
 }
-
-const questionTypes = [
-  { value: "single_choice", label: "单选题" },
-  { value: "multi_choice", label: "多选题" },
-  { value: "fill_blank", label: "填空题" },
-  { value: "short_answer", label: "简答题" },
-  { value: "essay", label: "论述题" },
-  { value: "true_false", label: "是非题" }
-]
 
 interface Course {
   id: string
@@ -46,55 +37,25 @@ export function CreateExamClient({ userId }: CreateExamClientProps) {
   const [saving, setSaving] = useState(false)
   const [courses, setCourses] = useState<Course[]>([])
   const [questions, setQuestions] = useState<QuestionBank[]>([])
-  const [mode, setMode] = useState<"manual" | "random">("random")
   const [selectedQuestions, setSelectedQuestions] = useState<string[]>([])
-  const [randomCounts, setRandomCounts] = useState<Record<string, number>>({
-    single_choice: 5,
-    multi_choice: 3,
-    fill_blank: 2,
-    short_answer: 2,
-    essay: 1,
-    true_false: 2
-  })
+  const [showQuestionPicker, setShowQuestionPicker] = useState(false)
+  const [questionCount, setQuestionCount] = useState<number>(0)
   
   const [formData, setFormData] = useState({
     title: "",
     description: "",
     course_id: "",
-    duration: 90,
-    total_score: 100,
-    shuffle_questions: false,
-    start_time: "",
-    end_time: "",
-    status: "draft"
+    duration: 90
   })
 
   useEffect(() => {
     const loadData = async () => {
-      const [coursesData, questionsData] = await Promise.all([
-        fetchCourses(),
-        fetchQuestions({ limit: 500 })
-      ])
+      const coursesData = await fetchCourses()
       setCourses(coursesData)
-      setQuestions(questionsData)
       setLoading(false)
     }
     loadData()
   }, [])
-
-  const handleRandomSelect = async () => {
-    const selected = await randomSelectQuestions({
-      courseId: formData.course_id || undefined,
-      counts: randomCounts
-    })
-    setSelectedQuestions(selected.map(q => q.id))
-    setQuestions(selected)
-  }
-
-  const handleRandomCountChange = (type: string, value: string) => {
-    const count = parseInt(value) || 0
-    setRandomCounts(prev => ({ ...prev, [type]: count }))
-  }
 
   const toggleQuestion = (questionId: string) => {
     setSelectedQuestions(prev => 
@@ -102,6 +63,20 @@ export function CreateExamClient({ userId }: CreateExamClientProps) {
         ? prev.filter(id => id !== questionId)
         : [...prev, questionId]
     )
+  }
+
+  const handleRandomGenerate = async () => {
+    if (questionCount <= 0) {
+      alert("请输入题目数量")
+      return
+    }
+    
+    const selected = await randomSelectQuestionsSimple(
+      questionCount,
+      formData.course_id || undefined
+    )
+    setQuestions(selected)
+    setSelectedQuestions(selected.map(q => q.id))
   }
 
   const handleSubmit = async () => {
@@ -117,10 +92,13 @@ export function CreateExamClient({ userId }: CreateExamClientProps) {
     setSaving(true)
     try {
       const result = await createExam({
-        ...formData,
+        title: formData.title,
+        description: formData.description,
         course_id: formData.course_id || undefined,
-        start_time: formData.start_time || undefined,
-        end_time: formData.end_time || undefined,
+        duration: formData.duration,
+        total_score: selectedQuestions.length * 5,
+        shuffle_questions: false,
+        status: "published",
         created_by: userId,
         question_ids: selectedQuestions
       })
@@ -140,8 +118,6 @@ export function CreateExamClient({ userId }: CreateExamClientProps) {
 
   const selectedQuestionsList = questions.filter(q => selectedQuestions.includes(q.id))
   const totalScore = selectedQuestionsList.reduce((sum, q) => sum + (q.score || 5), 0)
-
-  const totalRandomCount = Object.values(randomCounts).reduce((a, b) => a + b, 0)
 
   if (loading) {
     return (
@@ -179,11 +155,12 @@ export function CreateExamClient({ userId }: CreateExamClientProps) {
               <Label htmlFor="course">所属课程</Label>
               <select
                 id="course"
+                title="选择所属课程"
                 value={formData.course_id}
                 onChange={e => setFormData(prev => ({ ...prev, course_id: e.target.value }))}
                 className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
               >
-                <option value="">不关联课程（从全部题目中抽取）</option>
+                <option value="">不关联课程</option>
                 {courses.map(c => (
                   <option key={c.id} value={c.id}>{c.title}</option>
                 ))}
@@ -202,7 +179,7 @@ export function CreateExamClient({ userId }: CreateExamClientProps) {
             />
           </div>
 
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="duration">考试时长（分钟）</Label>
               <Input
@@ -212,171 +189,69 @@ export function CreateExamClient({ userId }: CreateExamClientProps) {
                 onChange={e => setFormData(prev => ({ ...prev, duration: parseInt(e.target.value) || 90 }))}
               />
             </div>
-            <div className="space-y-2">
-              <Label>状态</Label>
-              <select
-                value={formData.status}
-                onChange={e => setFormData(prev => ({ ...prev, status: e.target.value }))}
-                className="w-full h-10 px-3 rounded-md border border-input bg-background text-sm"
-              >
-                <option value="draft">草稿</option>
-                <option value="published">已发布</option>
-              </select>
-            </div>
-            <div className="space-y-2">
-              <Label>随机题目顺序</Label>
-              <button
-                type="button"
-                onClick={() => setFormData(prev => ({ ...prev, shuffle_questions: !prev.shuffle_questions }))}
-                className={cn(
-                  "w-full h-10 flex items-center justify-center gap-2 rounded-md border text-sm",
-                  formData.shuffle_questions 
-                    ? "border-primary bg-primary/5 text-primary" 
-                    : "border-input bg-background text-muted-foreground"
-                )}
-              >
-                <Shuffle className="w-4 h-4" />
-                {formData.shuffle_questions ? "已启用" : "未启用"}
-              </button>
-            </div>
           </div>
         </CardContent>
       </Card>
 
       <Card className="border-border/50">
         <CardContent className="p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-foreground">试卷题目</h2>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setMode("random")}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
-                  mode === "random"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                )}
-              >
-                <Sparkles className="w-4 h-4 inline mr-1" />
-                随机抽题
-              </button>
-              <button
-                type="button"
-                onClick={() => setMode("manual")}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
-                  mode === "manual"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted text-muted-foreground hover:bg-muted/80"
-                )}
-              >
-                <Plus className="w-4 h-4 inline mr-1" />
-                手动选题
-              </button>
+          <h2 className="text-lg font-semibold text-foreground">试卷题目</h2>
+          
+          <div className="flex items-center gap-4">
+            <div className="flex-1 space-y-2">
+              <Label htmlFor="questionCount">题目数量</Label>
+              <Input
+                id="questionCount"
+                type="number"
+                min="0"
+                value={questionCount}
+                onChange={e => setQuestionCount(parseInt(e.target.value) || 0)}
+                placeholder="输入数字"
+              />
+            </div>
+            <div className="pt-6">
+              <Button onClick={handleRandomGenerate}>
+                <RefreshCw className="w-4 h-4 mr-1" />
+                随机生成
+              </Button>
             </div>
           </div>
 
-          {mode === "random" ? (
-            <div className="space-y-4">
-              <div className="grid md:grid-cols-3 gap-3">
-                {questionTypes.map(type => (
-                  <div key={type.value} className="flex items-center gap-2">
-                    <Label className="text-sm w-20 shrink-0">{type.label}</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={randomCounts[type.value] || 0}
-                      onChange={e => handleRandomCountChange(type.value, e.target.value)}
-                      className="w-20"
-                    />
-                    <span className="text-xs text-muted-foreground">题</span>
-                  </div>
-                ))}
-              </div>
-              
-              <div className="flex items-center gap-4">
-                <Button onClick={handleRandomSelect}>
-                  <RefreshCw className="w-4 h-4 mr-1" />
-                  随机生成试卷
-                </Button>
-                <span className="text-sm text-muted-foreground">
-                  共 {totalRandomCount} 题，预计 {totalRandomCount * 5} 分
-                </span>
-              </div>
+          <div className="text-center text-sm text-muted-foreground">或</div>
 
-              {selectedQuestions.length > 0 && (
-                <div className="mt-4 p-4 rounded-lg bg-muted/50 space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium">已随机生成 {selectedQuestions.length} 道题目</span>
-                    <Button variant="ghost" size="sm" onClick={handleRandomSelect}>
-                      <RefreshCw className="w-3 h-3 mr-1" /> 重新生成
-                    </Button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {Object.entries(
-                      selectedQuestionsList.reduce((acc, q) => {
-                        acc[q.type] = (acc[q.type] || 0) + 1
-                        return acc
-                      }, {} as Record<string, number>)
-                    ).map(([type, count]) => (
-                      <Badge key={type} variant="secondary">
-                        {typeLabels[type] || type}: {count}
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {selectedQuestions.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <FileText className="w-10 h-10 mx-auto mb-2 opacity-50" />
-                  <p>点击上方"手动选题"添加题目</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {selectedQuestionsList.map((q, index) => (
-                    <div
-                      key={q.id}
-                      className="flex items-center justify-between p-3 rounded-lg border bg-card"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-sm font-medium text-muted-foreground w-6">
-                          {index + 1}.
-                        </span>
-                        <div>
-                          <p className="text-sm text-foreground">{q.title}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <Badge variant="secondary" className="text-xs">
-                              {typeLabels[q.type] || q.type}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">{q.score || 5}分</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => toggleQuestion(q.id)}
-                      >
-                        <X className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          <Button variant="outline" onClick={() => setShowQuestionPicker(true)}>
+            <Plus className="w-4 h-4 mr-1" />
+            手动选择题目
+          </Button>
 
           {selectedQuestions.length > 0 && (
-            <div className="flex items-center justify-between pt-4 border-t">
-              <div className="text-sm text-muted-foreground">
-                共 {selectedQuestions.length} 题
+            <div className="mt-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-sm font-medium">已选择 {selectedQuestions.length} 道题目</span>
+                <span className="text-sm text-muted-foreground">总分 {totalScore} 分</span>
               </div>
-              <div className="text-sm font-medium">
-                总分：<span className="text-primary">{totalScore}</span> 分
+              <div className="space-y-2">
+                {selectedQuestionsList.map((q, index) => (
+                  <div
+                    key={q.id}
+                    className="flex items-center justify-between p-3 rounded-lg border bg-card"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-muted-foreground w-6">
+                        {index + 1}.
+                      </span>
+                      <div>
+                        <p className="text-sm text-foreground">{q.title}</p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="secondary" className="text-xs">
+                            {typeLabels[q.type] || q.type}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">{q.score || 5}分</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -392,6 +267,139 @@ export function CreateExamClient({ userId }: CreateExamClientProps) {
           {saving ? "保存中..." : "保存试卷"}
         </Button>
       </div>
+
+      {showQuestionPicker && (
+        <QuestionPicker
+          courses={courses}
+          courseId={formData.course_id}
+          selectedIds={selectedQuestions}
+          onToggle={toggleQuestion}
+          onClose={() => setShowQuestionPicker(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+function QuestionPicker({
+  courses,
+  courseId,
+  selectedIds,
+  onToggle,
+  onClose
+}: {
+  courses: Course[]
+  courseId: string
+  selectedIds: string[]
+  onToggle: (id: string) => void
+  onClose: () => void
+}) {
+  const [questions, setQuestions] = useState<QuestionBank[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filterCourse, setFilterCourse] = useState(courseId)
+  const [filterType, setFilterType] = useState("")
+
+  useEffect(() => {
+    const loadQuestions = async () => {
+      setLoading(true)
+      const data = await fetchQuestions({ 
+        courseId: filterCourse || undefined,
+        type: filterType || undefined,
+        limit: 200 
+      })
+      setQuestions(data)
+      setLoading(false)
+    }
+    loadQuestions()
+  }, [filterCourse, filterType])
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-3xl max-h-[80vh] overflow-hidden">
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold">选择题目</h2>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              <X className="w-4 h-4" />
+            </Button>
+          </div>
+
+          <div className="flex gap-3">
+            <select
+              title="按课程筛选"
+              value={filterCourse}
+              onChange={e => setFilterCourse(e.target.value)}
+              className="flex-1 h-9 px-3 rounded-md border border-input bg-background text-sm"
+            >
+              <option value="">全部课程</option>
+              {courses.map(c => (
+                <option key={c.id} value={c.id}>{c.title}</option>
+              ))}
+            </select>
+            <select
+              title="按题型筛选"
+              onChange={e => setFilterType(e.target.value)}
+              className="flex-1 h-9 px-3 rounded-md border border-input bg-background text-sm"
+            >
+              <option value="">全部题型</option>
+              {Object.entries(typeLabels).map(([key, label]) => (
+                <option key={key} value={key}>{label}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {loading ? (
+              <div className="text-center py-8 text-muted-foreground">加载中...</div>
+            ) : questions.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">暂无题目</div>
+            ) : (
+              questions.map(q => {
+                const isSelected = selectedIds.includes(q.id)
+                return (
+                  <button
+                    key={q.id}
+                    onClick={() => onToggle(q.id)}
+                    className={cn(
+                      "w-full flex items-center justify-between p-3 rounded-lg border text-left transition-all",
+                      isSelected
+                        ? "border-primary bg-primary/5"
+                        : "border-border bg-card hover:border-primary/50"
+                    )}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-foreground truncate">{q.title}</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge variant="secondary" className="text-xs">
+                          {typeLabels[q.type] || q.type}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">{q.score || 5}分</span>
+                      </div>
+                    </div>
+                    <div className={cn(
+                      "w-6 h-6 rounded-md border-2 flex items-center justify-center ml-3 shrink-0",
+                      isSelected 
+                        ? "border-primary bg-primary text-primary-foreground" 
+                        : "border-border"
+                    )}>
+                      {isSelected && <Check className="w-4 h-4" />}
+                    </div>
+                  </button>
+                )
+              })
+            )}
+          </div>
+
+          <div className="flex items-center justify-between pt-4 border-t">
+            <div className="text-sm text-muted-foreground">
+              已选择 {selectedIds.length} 题
+            </div>
+            <Button onClick={onClose}>
+              确认
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

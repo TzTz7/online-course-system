@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { createExamAttempt, updateExamAttempt } from "@/lib/exam-actions"
+import { createExamAttempt, updateExamAttempt, submitExam } from "@/lib/exam-actions"
 import type { Exam, ExamQuestion, QuestionBank } from "@/lib/definitions"
 
 const parseOptions = (opts: any): { id: string; text: string }[] | null => {
@@ -73,6 +73,7 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
   const [answers, setAnswers] = useState<Record<string, string[]>>({})
   const [timeLeft, setTimeLeft] = useState(exam.duration * 60)
   const [isSubmitted, setIsSubmitted] = useState(false)
+  const [submitResult, setSubmitResult] = useState<{ score: number; correctCount: number } | null>(null)
   const [attemptId, setAttemptId] = useState<string | null>(null)
 
   // 处理答案选择
@@ -186,39 +187,22 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
   const handleSubmit = async () => {
     console.log('=== Handle Submit Called ===')
     console.log('attemptId:', attemptId)
+    console.log('exam.id:', exam.id)
     console.log('answers:', answers)
     
-    let correctCount = 0
-    let totalScore = 0
-    
-    questions.forEach(q => {
-      const userAnswer = answers[q.id] || []
-      const correctAnswer = q.answer
-      console.log(`Question ${q.id}:`)
-      console.log('  - User answer:', userAnswer)
-      console.log('  - Correct answer:', correctAnswer)
-      console.log('  - Options:', q.options)
-      
-      if (checkAnswerEqual(userAnswer, correctAnswer, q)) {
-        correctCount++
-        totalScore += q.score
-      }
-    })
-
-    console.log('Correct count:', correctCount, 'Total score:', totalScore)
-
-    if (attemptId) {
-      console.log('Updating exam attempt with attemptId:', attemptId)
-      const result = await updateExamAttempt(attemptId, {
-        answers,
-        score: totalScore,
-        status: "submitted"
-      })
-      console.log('Update result:', result)
-    } else {
-      console.error('No attemptId found!')
+    if (!attemptId || !exam.id) {
+      console.error('Missing attemptId or exam.id!')
+      setIsSubmitted(true)
+      return
     }
-
+    
+    const result = await submitExam(exam.id, attemptId, answers)
+    console.log('Submit result:', result)
+    
+    setSubmitResult({
+      score: result.score,
+      correctCount: result.correctCount
+    })
     setIsSubmitted(true)
   }
 
@@ -241,15 +225,23 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
 
   if (isSubmitted) {
     let correctCount = 0
-    questions.forEach(q => {
-      const userAnswer = answers[q.id] || []
-      const correctAnswer = q.answer
-      if (checkAnswerEqual(userAnswer, correctAnswer, q)) {
-        correctCount++
-      }
-    })
+    let rawScore = 0
     
-    const score = Math.round((correctCount / questions.length) * 100)
+    if (submitResult) {
+      correctCount = submitResult.correctCount
+      rawScore = submitResult.score
+    } else {
+      questions.forEach(q => {
+        const userAnswer = answers[q.id] || []
+        const correctAnswer = q.answer
+        if (checkAnswerEqual(userAnswer, correctAnswer, q)) {
+          correctCount++
+          rawScore += q.score
+        }
+      })
+    }
+    
+    const scorePercent = Math.round((correctCount / questions.length) * 100)
     
     return (
       <div className="p-4 pt-16 md:pt-6 md:p-6 space-y-6">
@@ -261,13 +253,13 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
           <CardContent className="p-6 text-center space-y-4">
             <div className={cn(
               "flex items-center justify-center w-20 h-20 rounded-full mx-auto",
-              score >= 60 ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]" : "bg-destructive/10 text-destructive"
+              scorePercent >= 60 ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]" : "bg-destructive/10 text-destructive"
             )}>
               <Award className="w-10 h-10" />
             </div>
             <div>
-              <p className="text-4xl font-bold text-foreground">{score}</p>
-              <p className="text-sm text-muted-foreground mt-1">总分 100 分</p>
+              <p className="text-4xl font-bold text-foreground">{scorePercent}</p>
+              <p className="text-sm text-muted-foreground mt-1">总分 100 分（实际得分 {rawScore}）</p>
             </div>
             <div className="flex items-center justify-center gap-6 text-sm">
               <span className="flex items-center gap-1 text-[hsl(var(--success))]">
@@ -375,7 +367,7 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
           {q.type === 'true_false' && (
             <div className="space-y-3">
               <button
-                onClick={() => handleAnswer(q.id, 'true')}
+                onClick={() => handleAnswer(q.id, 'true', q.type)}
                 className={cn(
                   "w-full flex items-center gap-3 p-4 rounded-xl border text-left transition-all",
                   isOptionSelected(q.id, 'true')
@@ -394,7 +386,7 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
                 <span className="text-sm">正确</span>
               </button>
               <button
-                onClick={() => handleAnswer(q.id, 'false')}
+                onClick={() => handleAnswer(q.id, 'false', q.type)}
                 className={cn(
                   "w-full flex items-center gap-3 p-4 rounded-xl border text-left transition-all",
                   isOptionSelected(q.id, 'false')

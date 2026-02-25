@@ -1,20 +1,6 @@
 import { sql } from './db';
 import type { User, Category, Course, QuestionBank, Exam, ExamQuestion, ExamAttempt } from './definitions';
 
-export async function getUser(email: string): Promise<User | undefined> {
-  try {
-    const user = await sql<User[]>`
-      SELECT id, email, password, name, avatar, role, status, created_at, updated_at
-      FROM users 
-      WHERE email = ${email}
-    `;
-    return user[0];
-  } catch (error) {
-    console.error('Failed to fetch user:', error);
-    throw new Error('Failed to fetch user.');
-  }
-}
-
 export async function getCategories(): Promise<Category[]> {
   try {
     const categories = await sql<Category[]>`
@@ -257,7 +243,7 @@ export async function getExamById(examId: string): Promise<Exam & { questions: E
 
     if (!exams[0]) return null;
 
-    const examQuestions = await sql<ExamQuestion[]>`
+    const examQuestions = await sql<any[]>`
       SELECT eq.id, eq.exam_id, eq.question_id, eq.score, eq.sort_order, eq.created_at,
              q.id as q_id, q.course_id as q_course_id, q.type as q_type, q.title as q_title, 
              q.options as q_options, q.answer as q_answer, q.score as q_score, 
@@ -320,34 +306,5 @@ export async function getExamAttempts(examId: string, userId?: string): Promise<
   } catch (error) {
     console.error('Failed to fetch exam attempts:', error);
     return [];
-  }
-}
-
-export async function createExamAttempt(data: { exam_id: string; user_id: string; total_score: number }): Promise<ExamAttempt | null> {
-  try {
-    const result = await sql<ExamAttempt[]>`
-      INSERT INTO exam_attempts (exam_id, user_id, total_score, status, start_time)
-      VALUES (${data.exam_id}, ${data.user_id}, ${data.total_score}, 'in-progress', NOW())
-      RETURNING id, exam_id, user_id, start_time, submit_time, score, total_score, status, created_at, updated_at
-    `;
-    return result[0] || null;
-  } catch (error) {
-    console.error('Failed to create exam attempt:', error);
-    return null;
-  }
-}
-
-export async function updateExamAttempt(attemptId: string, data: { answers: Record<string, string>; score: number; status: string }): Promise<boolean> {
-  try {
-    await sql`
-      UPDATE exam_attempts 
-      SET answers = ${JSON.stringify(data.answers)}, score = ${data.score}, status = ${data.status}, 
-          submit_time = ${data.status === 'submitted' ? 'NOW()' : null}, updated_at = NOW()
-      WHERE id = ${attemptId}
-    `;
-    return true;
-  } catch (error) {
-    console.error('Failed to update exam attempt:', error);
-    return false;
   }
 }
