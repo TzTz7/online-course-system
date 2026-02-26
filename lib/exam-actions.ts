@@ -1,7 +1,8 @@
 'use server'
 
 import { sql } from './db'
-import type { QuestionBank, Exam, ExamAttempt } from './definitions'
+import type { QuestionBank, Exam, ExamAttempt, QuestionType } from './definitions'
+import { checkAnswer } from './exam/question-bank-logic'
 
 export async function fetchQuestions(params: { courseId?: string; type?: string; limit?: number } = {}): Promise<QuestionBank[]> {
   const { courseId, type, limit = 50 } = params
@@ -261,42 +262,14 @@ export async function randomSelectQuestionsSimple(count: number, courseId?: stri
   }
 }
 
-function checkAnswerEqual(userAnswers: string[], correctAnswer: any): boolean {
-  if (!userAnswers || userAnswers.length === 0) return false
-  if (!correctAnswer) return false
-  
-  let correctValues: string[] = []
-  
-  if (typeof correctAnswer === 'string') {
-    correctValues = [correctAnswer]
-  } else if (Array.isArray(correctAnswer)) {
-    correctValues = correctAnswer.map((a: any) => String(a.id ?? a))
-  } else if (typeof correctAnswer === 'object' && correctAnswer !== null) {
-    correctValues = [String(correctAnswer.id ?? correctAnswer.value)]
-  }
-  
-  if (correctValues.length === 0) return false
-  
-  const userSet = new Set(userAnswers.map(u => u.toLowerCase()))
-  const correctSet = new Set(correctValues.map(c => c.toLowerCase()))
-  
-  if (userSet.size !== correctSet.size) return false
-  
-  for (const val of correctSet) {
-    if (!userSet.has(val)) return false
-  }
-  
-  return true
-}
-
 export async function submitExam(
   examId: string, 
   attemptId: string, 
   answers: Record<string, string[]>
 ): Promise<{ score: number; correctCount: number; totalQuestions: number }> {
   try {
-    const examQuestions = await sql<{ id: string; question_id: string; score: number; answer: any }[]>`
-      SELECT eq.id, eq.question_id, eq.score, q.answer
+    const examQuestions = await sql<{ id: string; question_id: string; score: number; answer: string; type: string }[]>`
+      SELECT eq.id, eq.question_id, eq.score, q.answer, q.type
       FROM exam_questions eq
       JOIN questions q ON eq.question_id = q.id
       WHERE eq.exam_id = ${examId}
@@ -306,10 +279,28 @@ export async function submitExam(
     let correctCount = 0
     
     for (const eq of examQuestions) {
-      const userAnswer = answers[eq.question_id] || []
+      const userAnswerArr = answers[eq.question_id] || []
       const correctAnswer = eq.answer
+      const questionType = eq.type as QuestionType
       
-      if (checkAnswerEqual(userAnswer, correctAnswer)) {
+      // 调试日志
+      console.log('Checking question:', eq.question_id, 'type:', questionType)
+      console.log('User answer:', userAnswerArr, 'Correct answer:', correctAnswer)
+      
+      // 转换答案格式
+      let answerToCheck = ""
+      if (questionType === 'multiple_choice') {
+        // 多选题：转换为 JSON 字符串
+        answerToCheck = JSON.stringify(userAnswerArr)
+      } else if (userAnswerArr.length > 0) {
+        // 其他题型：取第一个答案
+        answerToCheck = userAnswerArr[0]
+      }
+      
+      const isCorrect = checkAnswer(answerToCheck, correctAnswer, questionType)
+      console.log('Is correct:', isCorrect)
+      
+      if (isCorrect) {
         correctCount++
         score += eq.score
       }
@@ -330,7 +321,7 @@ export async function submitExam(
       totalQuestions: examQuestions.length
     }
   } catch (error) {
-    console.error('Failed to submit exam:', error)
-    return { score: 0, correctCount: 0, totalQuestions: 0 }
+    console.error('Failed to submit exam:', error);
+    return { score: 0, correctCount: 0, totalQuestions: 0 };
   }
 }

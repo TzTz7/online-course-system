@@ -9,56 +9,13 @@ import { Progress } from "@/components/ui/progress"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { createExamAttempt, updateExamAttempt, submitExam } from "@/lib/exam-actions"
-import type { Exam, ExamQuestion, QuestionBank } from "@/lib/definitions"
-
-const parseOptions = (opts: any): { id: string; text: string }[] | null => {
-  if (!opts) return null
-  
-  // If it's already an array
-  if (Array.isArray(opts)) {
-    const result = opts.map((opt: any, idx: number) => {
-      const id = opt.id ?? opt.value ?? opt.key ?? String(idx + 1)
-      const text = opt.text ?? opt.label ?? opt.value ?? opt.name ?? String(opt) ?? ''
-      return { id: String(id), text: String(text) }
-    }).filter((opt: any) => opt.text)
-    return result.length > 0 ? result : null
-  }
-  
-  // If it's a string, try to parse as JSON
-  if (typeof opts === 'string') {
-    try {
-      const parsed = JSON.parse(opts)
-      if (Array.isArray(parsed)) {
-        const result = parsed.map((opt: any, idx: number) => {
-          const id = opt.id ?? opt.value ?? opt.key ?? String(idx + 1)
-          const text = opt.text ?? opt.label ?? opt.value ?? opt.name ?? String(opt) ?? ''
-          return { id: String(id), text: String(text) }
-        }).filter((opt: any) => opt.text)
-        return result.length > 0 ? result : null
-      }
-      // If it's a string like "A,B,C,D", split it
-      if (opts.includes(',')) {
-        return opts.split(',').map((opt: string, idx: number) => ({
-          id: String(idx + 1),
-          text: opt.trim()
-        }))
-      }
-    } catch {
-      // If parsing fails, return null
-    }
-  }
-  
-  return null
-}
-
-const typeLabels: Record<string, string> = {
-  single_choice: "单选题",
-  multi_choice: "多选题",
-  fill_blank: "填空题",
-  short_answer: "简答题",
-  essay: "论述题",
-  true_false: "是非题"
-}
+import type { Exam, ExamQuestion, QuestionBank, QuestionType } from "@/lib/definitions"
+import { 
+  checkAnswer, 
+  parseQuestionOptions, 
+  parseQuestionAnswer,
+  questionTypeLabels 
+} from "@/lib/exam/question-bank-logic"
 
 interface ExamTakingProps {
   exam: Exam & { questions: ExamQuestion[] }
@@ -67,10 +24,17 @@ interface ExamTakingProps {
 
 export function ExamTaking({ exam, userId }: ExamTakingProps) {
   const router = useRouter()
-  const questions = exam.questions.map(eq => eq.question).filter(Boolean) as (QuestionBank & { score: number; sort_order: number })[]
+  const examQuestions = exam.questions
+  const questions = examQuestions.map(eq => eq.question).filter(Boolean) as QuestionBank[]
+  const questionScores: Record<string, number> = {}
+  examQuestions.forEach(eq => {
+    if (eq.question) {
+      questionScores[eq.question.id] = eq.score
+    }
+  })
   
   const [currentQuestion, setCurrentQuestion] = useState(0)
-  const [answers, setAnswers] = useState<Record<string, string[]>>({})
+  const [answers, setAnswers] = useState<Record<string, string>>({})
   const [timeLeft, setTimeLeft] = useState(exam.duration * 60)
   const [isSubmitted, setIsSubmitted] = useState(false)
   const [submitResult, setSubmitResult] = useState<{ score: number; correctCount: number } | null>(null)
@@ -78,26 +42,44 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
 
   // 处理答案选择
   const handleAnswer = (questionId: string, optionId: string, questionType: string) => {
-    if (questionType === 'multi_choice') {
-      // 多选题 - 切换选择
+    if (questionType === 'multiple_choice') {
+      // 多选题 - 切换选择（存储为 JSON 字符串）
       setAnswers(prev => {
-        const current = prev[questionId] || []
-        if (current.includes(optionId)) {
-          return { ...prev, [questionId]: current.filter(id => id !== optionId) }
-        } else {
-          return { ...prev, [questionId]: [...current, optionId] }
+        const current = prev[questionId] || "[]"
+        let currentArr: string[] = []
+        try {
+          currentArr = JSON.parse(current)
+        } catch {
+          currentArr = []
         }
+        
+        if (currentArr.includes(optionId)) {
+          currentArr = currentArr.filter(id => id !== optionId)
+        } else {
+          currentArr = [...currentArr, optionId]
+        }
+        return { ...prev, [questionId]: JSON.stringify(currentArr) }
       })
     } else {
       // 单选题/其他 - 单选
-      setAnswers(prev => ({ ...prev, [questionId]: [optionId] }))
+      setAnswers(prev => ({ ...prev, [questionId]: optionId }))
     }
   }
 
   // 检查是否选中
-  const isOptionSelected = (questionId: string, optionId: string): boolean => {
-    const selected = answers[questionId] || []
-    return selected.includes(optionId)
+  const isOptionSelected = (questionId: string, optionId: string, questionType: string): boolean => {
+    const answer = answers[questionId]
+    if (!answer) return false
+    
+    if (questionType === 'multiple_choice') {
+      try {
+        const arr = JSON.parse(answer)
+        return arr.includes(optionId)
+      } catch {
+        return false
+      }
+    }
+    return answer === optionId
   }
 
   useEffect(() => {
@@ -135,69 +117,35 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   }
 
-  const checkAnswerEqual = (userAnswers: string[] | undefined, correctAnswer: any, question: QuestionBank & { score: number; sort_order: number }): boolean => {
-    if (!userAnswers || userAnswers.length === 0) return false
-    if (!correctAnswer) return false
-    
-    const options = parseOptions(question.options) as { id: string; text: string }[] | null
-    
-    const getOptionLetter = (optionId: string): string => {
-      if (!options) return optionId
-      let idx = options.findIndex(o => String(o.id) === String(optionId))
-      if (idx < 0) {
-        idx = options.findIndex(o => o.text.toLowerCase() === optionId.toLowerCase())
-      }
-      if (idx < 0) {
-        const num = parseInt(optionId)
-        if (!isNaN(num) && num > 0 && num <= options.length) {
-          idx = num - 1
-        }
-      }
-      if (idx >= 0) {
-        return String.fromCharCode(65 + idx)
-      }
-      return String(optionId).toUpperCase()
-    }
-    
-    const userSet = new Set(userAnswers.map(a => getOptionLetter(a)))
-    
-    let correctValues: string[] = []
-    
-    if (typeof correctAnswer === 'string') {
-      correctValues = [correctAnswer]
-    } else if (Array.isArray(correctAnswer)) {
-      correctValues = correctAnswer.map((a: any) => String(a.id ?? a))
-    } else if (typeof correctAnswer === 'object' && correctAnswer !== null) {
-      correctValues = [String(correctAnswer.id ?? correctAnswer.value ?? JSON.stringify(correctAnswer))]
-    }
-    
-    if (correctValues.length === 0) return false
-    
-    const correctSet = new Set(correctValues.map(c => c.toLowerCase()))
-    
-    if (userSet.size !== correctSet.size) return false
-    
-    for (const val of correctSet) {
-      if (!userSet.has(val)) return false
-    }
-    
-    return true
-  }
-
   const handleSubmit = async () => {
-    console.log('=== Handle Submit Called ===')
-    console.log('attemptId:', attemptId)
-    console.log('exam.id:', exam.id)
-    console.log('answers:', answers)
-    
     if (!attemptId || !exam.id) {
       console.error('Missing attemptId or exam.id!')
       setIsSubmitted(true)
       return
     }
     
-    const result = await submitExam(exam.id, attemptId, answers)
-    console.log('Submit result:', result)
+    // 转换 answers 格式为 Record<string, string[]>
+    // 只包含前端实际显示的题目（过滤掉 question 为 null 的）
+    const answersArray: Record<string, string[]> = {}
+    questions.forEach(q => {
+      const answer = answers[q.id]
+      if (answer) {
+        try {
+          // 尝试解析为数组（多选题）
+          answersArray[q.id] = JSON.parse(answer)
+        } catch {
+          // 非多选题，直接作为单元素数组
+          answersArray[q.id] = [answer]
+        }
+      } else {
+        answersArray[q.id] = []
+      }
+    })
+    
+    console.log('Submitting answers:', answersArray)
+    console.log('Questions:', questions.map(q => q.id))
+    
+    const result = await submitExam(exam.id, attemptId, answersArray)
     
     setSubmitResult({
       score: result.score,
@@ -232,11 +180,22 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
       rawScore = submitResult.score
     } else {
       questions.forEach(q => {
-        const userAnswer = answers[q.id] || []
-        const correctAnswer = q.answer
-        if (checkAnswerEqual(userAnswer, correctAnswer, q)) {
-          correctCount++
-          rawScore += q.score
+        const userAnswer = answers[q.id]
+        if (userAnswer) {
+          // 转换答案格式
+          let answerToCheck = userAnswer
+          if (q.type === 'multiple_choice') {
+            try {
+              const arr = JSON.parse(userAnswer)
+              answerToCheck = JSON.stringify(arr)
+            } catch {
+              answerToCheck = userAnswer
+            }
+          }
+          if (checkAnswer(answerToCheck, q.answer, q.type as QuestionType)) {
+            correctCount++
+            rawScore += questionScores[q.id] || q.score
+          }
         }
       })
     }
@@ -259,7 +218,7 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
             </div>
             <div>
               <p className="text-4xl font-bold text-foreground">{scorePercent}</p>
-              <p className="text-sm text-muted-foreground mt-1">总分 100 分（实际得分 {rawScore}）</p>
+              <p className="text-sm text-muted-foreground mt-1">总分 {exam.total_score} 分（实际得分 {rawScore}）</p>
             </div>
             <div className="flex items-center justify-center gap-6 text-sm">
               <span className="flex items-center gap-1 text-[hsl(var(--success))]">
@@ -275,23 +234,32 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
         <h2 className="text-lg font-semibold text-foreground">答题详情</h2>
         <div className="space-y-3">
           {questions.map((q, i) => {
-            const userAnswer = answers[q.id] || []
-            const correctAnswer = q.answer
-            const isCorrect = checkAnswerEqual(userAnswer, correctAnswer, q)
+            const userAnswer = answers[q.id]
+            const questionType = q.type as QuestionType
+            const options = parseQuestionOptions(q.options)
             
-            const options = parseOptions(q.options) as { id: string; text: string }[] | null
-            const getAnswerText = (answerId: string) => {
-              if (!options) return answerId
-              const opt = options.find(o => o.id === answerId || String(o.id) === answerId)
-              if (opt) return opt.text
-              const strId = String(answerId).toUpperCase()
-              const idx = strId.charCodeAt(0) - 65
-              if (idx >= 0 && idx < options.length) {
-                return options[idx].text
-              }
-              return answerId
+            // 转换答案格式
+            let answerToCheck = userAnswer || ""
+            if (questionType === 'multiple_choice' && userAnswer) {
+              try {
+                answerToCheck = JSON.stringify(JSON.parse(userAnswer))
+              } catch {}
             }
-
+            
+            const isCorrect = checkAnswer(answerToCheck, q.answer, questionType)
+            
+            // 格式化用户答案显示
+            const formatUserAnswer = (ans: string | undefined, type: string) => {
+              if (!ans) return "未作答"
+              if (type === 'multiple_choice') {
+                return parseQuestionAnswer(ans, type, options)
+              }
+              if (type === 'single_choice' || type === 'true_false') {
+                return parseQuestionAnswer(ans, type, options)
+              }
+              return parseQuestionAnswer(ans, type, null)
+            }
+            
             return (
               <Card key={q.id} className={cn("border-border/50 shadow-sm", isCorrect ? "border-l-4 border-l-[hsl(var(--success))]" : "border-l-4 border-l-destructive")}>
                 <CardContent className="p-4 space-y-2">
@@ -302,17 +270,12 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
                   <div className="ml-6 text-xs space-y-1">
                     <p className="text-muted-foreground">
                       你的答案: <span className={isCorrect ? "text-[hsl(var(--success))]" : "text-destructive"}>
-                        {userAnswer && userAnswer.length > 0 
-                          ? userAnswer.map(a => getAnswerText(a)).join(", ") 
-                          : "未作答"}
+                        {formatUserAnswer(userAnswer, questionType)}
                       </span>
                     </p>
-                    {!isCorrect && correctAnswer && (
+                    {!isCorrect && q.answer && (
                       <p className="text-[hsl(var(--success))]">
-                        正确答案: {Array.isArray(correctAnswer) 
-                          ? correctAnswer.map(a => getAnswerText(typeof a === "object" ? a.id : a)).join(", ")
-                          : getAnswerText(correctAnswer)
-                        }
+                        正确答案: {parseQuestionAnswer(q.answer, questionType, options)}
                       </p>
                     )}
                   </div>
@@ -326,7 +289,8 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
   }
 
   const q = questions[currentQuestion]
-  const options = parseOptions(q?.options) as { id: string; text: string }[] | null
+  const questionType = q.type as QuestionType
+  const options = parseQuestionOptions(q.options)
 
   return (
     <div className="flex flex-col h-screen">
@@ -340,7 +304,7 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
             }} 
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
-            <ArrowLeft className="w-4 h-4" /> 退出考试
+            <ArrowLeft className="w-4 h-4" />退出考试
           </button>
           <div className="flex items-center gap-2">
             <Clock className="w-4 h-4 text-primary" />
@@ -359,25 +323,25 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
         <div className="max-w-2xl mx-auto space-y-6">
           <div>
-            <Badge variant="secondary" className="text-xs mb-3">{q.score}分 · {typeLabels[q.type] || q.type}</Badge>
+            <Badge variant="secondary" className="text-xs mb-3">{questionScores[q.id] || q.score}分 · {questionTypeLabels[questionType] || q.type}</Badge>
             <h2 className="text-lg font-semibold text-foreground leading-relaxed">{q.title}</h2>
           </div>
 
           {/* 是非题 */}
-          {q.type === 'true_false' && (
+          {questionType === 'true_false' && (
             <div className="space-y-3">
               <button
                 onClick={() => handleAnswer(q.id, 'true', q.type)}
                 className={cn(
                   "w-full flex items-center gap-3 p-4 rounded-xl border text-left transition-all",
-                  isOptionSelected(q.id, 'true')
+                  isOptionSelected(q.id, 'true', q.type)
                     ? "border-primary bg-primary/5 text-foreground"
                     : "border-border bg-card text-foreground hover:border-primary/50"
                 )}
               >
                 <span className={cn(
                   "flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium shrink-0",
-                  isOptionSelected(q.id, 'true')
+                  isOptionSelected(q.id, 'true', q.type)
                     ? "bg-primary text-primary-foreground"
                     : "bg-secondary text-secondary-foreground"
                 )}>
@@ -389,14 +353,14 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
                 onClick={() => handleAnswer(q.id, 'false', q.type)}
                 className={cn(
                   "w-full flex items-center gap-3 p-4 rounded-xl border text-left transition-all",
-                  isOptionSelected(q.id, 'false')
+                  isOptionSelected(q.id, 'false', q.type)
                     ? "border-primary bg-primary/5 text-foreground"
                     : "border-border bg-card text-foreground hover:border-primary/50"
                 )}
               >
                 <span className={cn(
                   "flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium shrink-0",
-                  isOptionSelected(q.id, 'false')
+                  isOptionSelected(q.id, 'false', q.type)
                     ? "bg-primary text-primary-foreground"
                     : "bg-secondary text-secondary-foreground"
                 )}>
@@ -408,12 +372,12 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
           )}
 
           {/* 填空题、简答题、论述题 - 文本框 */}
-          {(q.type === 'fill_blank' || q.type === 'short_answer' || q.type === 'essay') && (
+          {(questionType === 'fill_blank' || questionType === 'essay') && (
             <div className="space-y-3">
               <textarea
-                value={(answers[q.id] || []).join('')}
-                onChange={(e) => setAnswers(prev => ({ ...prev, [q.id]: [e.target.value] }))}
-                placeholder={q.type === 'fill_blank' ? '请输入答案' : '请输入您的回答'}
+                value={answers[q.id] || ''}
+                onChange={(e) => setAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                placeholder={questionType === 'fill_blank' ? '请输入答案' : '请输入您的回答'}
                 className="w-full min-h-[120px] p-4 rounded-xl border border-border bg-card text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none resize-none"
               />
             </div>
@@ -422,39 +386,42 @@ export function ExamTaking({ exam, userId }: ExamTakingProps) {
           {/* 选择题（单选、多选）- 显示选项 */}
           {options && options.length > 0 && (
             <div className="space-y-3">
-              {options.map((opt, oi) => {
-                const isSelected = isOptionSelected(q.id, opt.id)
-                const isMulti = q.type === 'multi_choice'
+              {options.map((optText, oi) => {
+                const optLetter = String.fromCharCode(65 + oi)
+                const isMulti = questionType === 'multiple_choice'
+                const isSelected = isOptionSelected(q.id, optLetter, q.type)
+                
                 return (
-                <button
-                  key={opt.id || oi}
-                  onClick={() => handleAnswer(q.id, opt.id, q.type)}
-                  className={cn(
-                    "w-full flex items-center gap-3 p-4 rounded-xl border text-left transition-all",
-                    isSelected
-                      ? "border-primary bg-primary/5 text-foreground"
-                      : "border-border bg-card text-foreground hover:border-primary/50"
-                  )}
-                >
-                  <span className={cn(
-                    "flex items-center justify-center text-sm font-medium shrink-0",
-                    isMulti 
-                      ? "w-6 h-6 rounded-md border-2" 
-                      : "w-8 h-8 rounded-full",
-                    isSelected
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "bg-secondary text-secondary-foreground border-border"
-                  )}>
-                    {isMulti ? (
-                      <span className="text-xs">{isSelected ? '✓' : ''}</span>
-                    ) : (
-                      String.fromCharCode(65 + oi)
+                  <button
+                    key={oi}
+                    onClick={() => handleAnswer(q.id, optLetter, q.type)}
+                    className={cn(
+                      "w-full flex items-center gap-3 p-4 rounded-xl border text-left transition-all",
+                      isSelected
+                        ? "border-primary bg-primary/5 text-foreground"
+                        : "border-border bg-card text-foreground hover:border-primary/50"
                     )}
-                  </span>
-                  <span className="text-sm">{opt.text}</span>
-                </button>
-              )})}
-              {q.type === 'multi_choice' && (
+                  >
+                    <span className={cn(
+                      "flex items-center justify-center text-sm font-medium shrink-0",
+                      isMulti 
+                        ? "w-6 h-6 rounded-md border-2" 
+                        : "w-8 h-8 rounded-full",
+                      isSelected
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-secondary text-secondary-foreground border-border"
+                    )}>
+                      {isMulti ? (
+                        <span className="text-xs">{isSelected ? '✓' : ''}</span>
+                      ) : (
+                        optLetter
+                      )}
+                    </span>
+                    <span className="text-sm">{optText}</span>
+                  </button>
+                )
+              })}
+              {questionType === 'multiple_choice' && (
                 <p className="text-xs text-muted-foreground">提示：多选题，可选择一个或多个选项</p>
               )}
             </div>

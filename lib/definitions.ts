@@ -36,21 +36,34 @@ export type User = {
   updated_at: string;
 };
 
-export type QuestionType = 'single_choice' | 'multi_choice' | 'fill_blank' | 'short_answer' | 'essay';
-export type Difficulty = 'easy' | 'medium' | 'hard';
-
-export type QuestionBank = {
+// 仅保留题目类型枚举（匹配数据库 type 字段的取值）
+export type QuestionType = 
+  | 'single_choice' 
+  | 'multiple_choice' 
+  | 'true_false' 
+  | 'fill_blank' 
+  | 'essay';
+  
+// 核心 Question 类型（匹配数据库表字段）
+export type Question = {
   id: string;
   course_id: string | null;
-  type: string;
+  type: QuestionType;
   title: string;
-  options: { id: string; text: string }[] | null;
-  answer: { id: string }[] | string | null;
+  options: string[] | null;   // JSON 字符串，如 '["A","B","C","D"]'
+  answer: string | null;    // 单选"B"，多选'["A","B"]'，是非"true"，填空/简答"xxx"
   score: number;
   created_at: string;
   updated_at: string;
-  course_name?: string;
 };
+
+// QuestionCard = Question + course_name（题库中使用的类型）
+export type QuestionCard = Question & {
+  course_name: string | null;
+};
+
+// 保持向后兼容
+export type QuestionBank = QuestionCard;
 
 export type Exam = {
   id: string;
@@ -98,17 +111,3 @@ export type ExamAttempt = {
 
 export type PaperStatus = 'draft' | 'published';
 export type ExamStatus = 'in_progress' | 'submitted' | 'graded';
-
-export type Question = {
-  id: string;
-  course_id: string | null;
-  type: QuestionType;
-  content: string;
-  options: string[] | null;
-  answer: string | string[];
-  explanation: string | null;
-  difficulty: Difficulty;
-  score: number;
-  sort_order: number;
-  created_at: string;
-};
