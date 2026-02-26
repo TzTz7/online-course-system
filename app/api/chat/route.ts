@@ -3,11 +3,12 @@ import {
   streamText,
   type UIMessage,
 } from "ai"
+import { ollama } from "ai-sdk-ollama"
 
-export const maxDuration = 60
+export const maxDuration = 300
 
 export async function POST(req: Request) {
-  const { messages, role }: { messages: UIMessage[]; role?: string } = await req.json()
+  const { messages, role, model }: { messages: UIMessage[]; role?: string; model?: string } = await req.json()
 
   let systemPrompt = "你是SmartEdu AI智能辅导助手。你精通各个学科的知识，能够用清晰、易懂的方式解释复杂的概念。你善于使用类比和示例来帮助学生理解。当学生提问时，你会：1. 先确认理解学生的问题 2. 给出简洁明了的解释 3. 提供相关的例子 4. 适当延伸相关知识点。请用中文回答。"
 
@@ -21,8 +22,10 @@ export async function POST(req: Request) {
     systemPrompt = "你是AI课堂机器人，名叫「课堂管家」。你负责模拟课堂环境，包括课前预习提醒、课堂互动问答、课后复习总结。你会定期进行知识回顾，组织讨论话题，并对学生的参与给予积极反馈。请用中文回答。"
   }
 
+  const modelName = model || "qwen2.5:7b"
+
   const result = streamText({
-    model: "openai/gpt-4o-mini",
+    model: ollama(modelName),
     system: systemPrompt,
     messages: await convertToModelMessages(messages),
     abortSignal: req.signal,

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
+import ReactMarkdown from "react-markdown"
 import { Brain, Send, BookOpen, Lightbulb, HelpCircle, Sparkles, User, Bot, Loader2 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
@@ -67,7 +68,7 @@ export function AiTutorChat() {
           </div>
           <div>
             <h1 className="text-lg font-bold text-foreground">AI智能辅导</h1>
-            <p className="text-xs text-muted-foreground">基于深度学习的一对一智能答疑</p>
+            <p className="text-xs text-muted-foreground">基于本地模型的一对一智能答疑</p>
           </div>
         </div>
         <div className="flex gap-2 overflow-x-auto scrollbar-thin pb-1">
@@ -94,7 +95,7 @@ export function AiTutorChat() {
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin">
-        {messages.length === 0 && (
+        {messages.length === 0 && !isStreaming && (
           <div className="flex flex-col items-center justify-center h-full gap-6 pb-12">
             <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-primary/10 text-primary">
               <Brain className="w-8 h-8" />
@@ -118,6 +119,24 @@ export function AiTutorChat() {
           </div>
         )}
 
+        {messages.length === 0 && isStreaming && (
+          <div className="flex gap-3">
+            <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-primary text-primary-foreground shrink-0">
+              <Bot className="w-4 h-4" />
+            </div>
+            <div className="bg-card border border-border rounded-2xl rounded-tl-md px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span className="flex gap-1">
+                  <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                  <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                  <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                </span>
+                <span className="text-xs text-muted-foreground">思考中...</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {messages.map((msg) => {
           const text = getMessageText(msg)
           if (!text) return null
@@ -136,7 +155,29 @@ export function AiTutorChat() {
                   ? "bg-primary text-primary-foreground rounded-tr-md"
                   : "bg-card border border-border text-card-foreground rounded-tl-md"
               )}>
-                <div className="whitespace-pre-wrap">{text}</div>
+                {isUser ? (
+                  <div className="whitespace-pre-wrap">{text}</div>
+                ) : (
+                  <ReactMarkdown 
+                    components={{
+                      h1: ({node, ...props}) => <h1 className="text-lg font-bold mb-2" {...props} />,
+                      h2: ({node, ...props}) => <h2 className="text-base font-bold mb-2" {...props} />,
+                      h3: ({node, ...props}) => <h3 className="text-sm font-bold mb-1" {...props} />,
+                      p: ({node, ...props}) => <p className="mb-2" {...props} />,
+                      ul: ({node, ...props}) => <ul className="list-disc list-inside mb-2 space-y-1" {...props} />,
+                      ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-2 space-y-1" {...props} />,
+                      li: ({node, ...props}) => <li className="ml-2" {...props} />,
+                      code: ({node, inline, ...props}) => inline 
+                        ? <code className="bg-secondary px-1 py-0.5 rounded text-xs" {...props} />
+                        : <code className="block bg-secondary p-2 rounded text-xs overflow-x-auto" {...props} />,
+                      pre: ({node, ...props}) => <pre className="bg-secondary p-3 rounded-lg overflow-x-auto mb-2 text-xs" {...props} />,
+                      strong: ({node, ...props}) => <strong className="font-bold" {...props} />,
+                      em: ({node, ...props}) => <em className="italic" {...props} />,
+                    }}
+                  >
+                    {text}
+                  </ReactMarkdown>
+                )}
               </div>
             </div>
           )
@@ -148,7 +189,14 @@ export function AiTutorChat() {
               <Bot className="w-4 h-4" />
             </div>
             <div className="bg-card border border-border rounded-2xl rounded-tl-md px-4 py-3">
-              <Loader2 className="w-4 h-4 animate-spin text-primary" />
+              <div className="flex items-center gap-2">
+                <span className="flex gap-1">
+                  <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                  <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                  <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                </span>
+                <span className="text-xs text-muted-foreground">思考中</span>
+              </div>
             </div>
           </div>
         )}
