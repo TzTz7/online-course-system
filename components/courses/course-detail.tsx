@@ -1,70 +1,51 @@
 "use client"
 
-import { useState } from "react"
 import Link from "next/link"
-import { ArrowLeft, BookOpen, Clock, Users, Star, Play, CheckCircle, Lock, FileText, Brain } from "lucide-react"
+import { ArrowLeft, BookOpen, FileQuestion } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
-import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import type { CourseWithChapters } from "@/lib/course-actions/chapters"
 
-const courseData: Record<string, {
-  name: string; teacher: string; students: number; rating: number; hours: number; description: string; tags: string[]; progress: number
-  chapters: { title: string; lessons: { title: string; duration: string; completed: boolean; locked: boolean }[] }[]
-  knowledgePoints: { title: string; description: string }[]
-}> = {
-  "1": {
-    name: "高等数学", teacher: "张教授", students: 320, rating: 4.8, hours: 64, progress: 72,
-    description: "本课程涵盖一元函数微积分、多元函数微积分、微分方程、无穷级数等核心内容。通过系统学习，帮助学生建立扎实的数学基础，培养抽象思维和逻辑推理能力。",
-    tags: ["必修", "基础"],
-    chapters: [
-      { title: "第一章 函数与极限", lessons: [
-        { title: "1.1 函数的概念", duration: "45分钟", completed: true, locked: false },
-        { title: "1.2 数列的极限", duration: "50分钟", completed: true, locked: false },
-        { title: "1.3 函数的极限", duration: "40分钟", completed: true, locked: false },
-      ]},
-      { title: "第二章 导数与微分", lessons: [
-        { title: "2.1 导数的定义", duration: "55分钟", completed: true, locked: false },
-        { title: "2.2 求导法则", duration: "50分钟", completed: true, locked: false },
-        { title: "2.3 高阶导数", duration: "45分钟", completed: false, locked: false },
-      ]},
-      { title: "第三章 微分中值定理", lessons: [
-        { title: "3.1 中值定理", duration: "60分钟", completed: false, locked: false },
-        { title: "3.2 洛必达法则", duration: "45分钟", completed: false, locked: false },
-        { title: "3.3 泰勒公式", duration: "55分钟", completed: false, locked: true },
-      ]},
-    ],
-    knowledgePoints: [
-      { title: "极限理论", description: "理解epsilon-delta定义，掌握极限的运算法则" },
-      { title: "导数与微分", description: "导数的几何意义与物理意义，基本求导法则" },
-      { title: "积分学", description: "不定积分与定积分的概念和计算方法" },
-      { title: "微分方程", description: "常见微分方程的求解方法与应用" },
-    ],
-  },
+// 补充子类型定义（兼容原有类型）
+type Chapter = {
+  id: string
+  title: string
+  sections: Array<{
+    id: string
+    title: string
+    content_type: 'video' | 'text' | string
+  }>
 }
 
-const defaultCourse = {
-  name: "课程详情", teacher: "教授", students: 200, rating: 4.5, hours: 48, progress: 50,
-  description: "这是一门精心设计的课程，涵盖该领域的核心知识点和实践技能。",
-  tags: ["精选"], chapters: [
-    { title: "第一章 基础入门", lessons: [
-      { title: "1.1 课程概述", duration: "30分钟", completed: true, locked: false },
-      { title: "1.2 基本概念", duration: "45分钟", completed: false, locked: false },
-    ]}
-  ],
-  knowledgePoints: [
-    { title: "核心概念", description: "掌握本课程的核心理论基础" },
-    { title: "实践应用", description: "将理论知识应用到实际场景" },
-  ],
+type Course = {
+  id: string
+  title: string
+  category_name?: string | null
+  description?: string | null
+  teacher_name?: string | null
 }
 
-export function CourseDetail({ courseId }: { courseId: string }) {
-  const course = courseData[courseId] || defaultCourse
-  const [activeTab, setActiveTab] = useState("chapters")
+// 类型兼容处理
+interface CourseWithChaptersFix extends Omit<CourseWithChapters, 'course' | 'chapters'> {
+  course: Course
+  chapters: Chapter[] | null | undefined
+}
+
+export function CourseDetail({ data }: { data: CourseWithChaptersFix }) {
+  // 解构时添加默认值，避免undefined
+  const { course, chapters = [] } = data
+
+  // 重构判断逻辑，增加空值校验
+  const hasChapters = Array.isArray(chapters) && chapters.length > 0
+  const hasSections = hasChapters && chapters.some(ch => Array.isArray(ch.sections) && ch.sections.length > 0)
 
   return (
     <div className="p-4 pt-16 md:pt-6 md:p-6 space-y-6">
-      <Link href="/courses" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+      <Link 
+        href="/courses" 
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+      >
         <ArrowLeft className="w-4 h-4" /> 返回课程中心
       </Link>
 
@@ -77,99 +58,69 @@ export function CourseDetail({ courseId }: { courseId: string }) {
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <h1 className="text-xl font-bold text-foreground">{course.name}</h1>
-                {course.tags.map((t) => <Badge key={t} variant="secondary" className="text-xs">{t}</Badge>)}
+                <h1 className="text-xl font-bold text-foreground">{course.title || '未命名课程'}</h1>
+                {course.category_name && (
+                  <Badge variant="secondary" className="text-xs">{course.category_name}</Badge>
+                )}
               </div>
-              <p className="text-sm text-muted-foreground mt-2">{course.description}</p>
+              <p className="text-sm text-muted-foreground mt-2">{course.description || '暂无课程描述'}</p>
               <div className="flex items-center gap-4 mt-3 text-sm text-muted-foreground flex-wrap">
-                <span>{course.teacher}</span>
-                <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{course.hours}课时</span>
-                <span className="flex items-center gap-1"><Users className="w-3.5 h-3.5" />{course.students}人在学</span>
-                <span className="flex items-center gap-1"><Star className="w-3.5 h-3.5 text-[hsl(var(--warning))]" />{course.rating}</span>
+                <span>教师：{course.teacher_name || '未知'}</span>
               </div>
-            </div>
-            <div className="flex flex-col items-end gap-2 shrink-0">
-              <div className="text-right">
-                <span className="text-2xl font-bold text-primary">{course.progress}%</span>
-                <p className="text-xs text-muted-foreground">学习进度</p>
-              </div>
-              <Progress value={course.progress} className="w-32 h-2" />
             </div>
           </div>
         </div>
       </Card>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      {/* Tabs - 修复括号/大括号嵌套错误 */}
+      <Tabs defaultValue="chapters">
         <TabsList className="bg-card border border-border">
           <TabsTrigger value="chapters">课程章节</TabsTrigger>
-          <TabsTrigger value="knowledge">知识点</TabsTrigger>
-          <TabsTrigger value="resources">课程资料</TabsTrigger>
         </TabsList>
 
         <TabsContent value="chapters" className="mt-4 space-y-4">
-          {course.chapters.map((chapter, ci) => (
-            <Card key={ci} className="border-border/50 shadow-sm">
-              <CardContent className="p-0">
-                <div className="p-4 border-b border-border/50">
-                  <h3 className="text-sm font-semibold text-foreground">{chapter.title}</h3>
-                  <p className="text-xs text-muted-foreground mt-1">{chapter.lessons.length} 节课</p>
-                </div>
-                {chapter.lessons.map((lesson, li) => (
-                  <div key={li} className="flex items-center gap-3 px-4 py-3 border-b border-border/30 last:border-b-0 hover:bg-secondary/30 transition-colors">
-                    {lesson.completed ? (
-                      <CheckCircle className="w-5 h-5 text-[hsl(var(--success))] shrink-0" />
-                    ) : lesson.locked ? (
-                      <Lock className="w-5 h-5 text-muted-foreground/40 shrink-0" />
-                    ) : (
-                      <Play className="w-5 h-5 text-primary shrink-0" />
-                    )}
-                    <span className={`text-sm flex-1 ${lesson.locked ? "text-muted-foreground/50" : "text-foreground"}`}>
-                      {lesson.title}
-                    </span>
-                    <span className="text-xs text-muted-foreground">{lesson.duration}</span>
-                  </div>
-                ))}
+          {!hasSections ? (
+            <Card className="border-border/50 shadow-sm">
+              <CardContent className="p-8 flex flex-col items-center justify-center text-center">
+                <FileQuestion className="w-12 h-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">暂无章节内容</p>
+                <p className="text-sm text-muted-foreground mt-1">请期待后续更新</p>
               </CardContent>
             </Card>
-          ))}
-        </TabsContent>
-
-        <TabsContent value="knowledge" className="mt-4">
-          <div className="grid sm:grid-cols-2 gap-4">
-            {course.knowledgePoints.map((kp, i) => (
-              <Card key={i} className="border-border/50 shadow-sm">
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3">
-                    <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary/10 text-primary shrink-0">
-                      <Brain className="w-5 h-5" />
+          ) : (
+            // 修复：filter和map的括号嵌套，确保所有()/{}闭合
+            chapters
+              .filter((chapter) => Array.isArray(chapter.sections) && chapter.sections.length > 0)
+              .map((chapter, ci) => (
+                <Card key={chapter.id} className="border-border/50 shadow-sm">
+                  <CardContent className="p-0">
+                    <div className="p-4 border-b border-border/50">
+                      <h3 className="text-sm font-semibold text-foreground">{chapter.title || '未命名章节'}</h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {Array.isArray(chapter.sections) ? chapter.sections.length : 0} 节
+                      </p>
                     </div>
-                    <div>
-                      <h3 className="text-sm font-semibold text-foreground">{kp.title}</h3>
-                      <p className="text-xs text-muted-foreground mt-1">{kp.description}</p>
-                      <Link href="/ai-tutor" className="inline-flex items-center gap-1 text-xs text-primary mt-2 hover:underline">
-                        AI辅导 <Brain className="w-3 h-3" />
+                    {/* 修复：sections遍历的括号/大括号 */}
+                    {Array.isArray(chapter.sections) && chapter.sections.map((section, si) => (
+                      <Link 
+                        key={section.id} 
+                        href={`/sections/${section.id}`}
+                        className="flex items-center gap-3 px-4 py-3 border-b border-border/30 last:border-b-0 hover:bg-secondary/30 transition-colors cursor-pointer"
+                      >
+                        {section.content_type === 'video' ? (
+                          <span className="text-lg shrink-0">🎥</span>
+                        ) : (
+                          <span className="text-lg shrink-0">📝</span>
+                        )}
+                        <span className="text-sm flex-1 text-foreground">
+                          {section.title || '未命名小节'}
+                        </span>
                       </Link>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="resources" className="mt-4">
-          <div className="space-y-3">
-            {["课程大纲.pdf", "第一章讲义.pdf", "第二章讲义.pdf", "习题集.pdf", "参考资料汇总.zip"].map((file, i) => (
-              <Card key={i} className="border-border/50 shadow-sm">
-                <CardContent className="p-4 flex items-center gap-3">
-                  <FileText className="w-5 h-5 text-primary shrink-0" />
-                  <span className="text-sm text-foreground flex-1">{file}</span>
-                  <button className="text-xs text-primary hover:underline">下载</button>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              ))
+          )}
         </TabsContent>
       </Tabs>
     </div>
