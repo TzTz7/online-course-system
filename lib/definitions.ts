@@ -111,3 +111,24 @@ export type ExamAttempt = {
 
 export type PaperStatus = 'draft' | 'published';
 export type ExamStatus = 'in_progress' | 'submitted' | 'graded';
+
+export type ChatMessage = {
+  id: string;
+  user_id: string;
+  category_id: string;
+  content: string;
+  created_at: string;
+  user?: {
+    id: string;
+    name: string;
+    avatar: string | null;
+  };
+};
+
+export type ChatUser = {
+  id: string;
+  name: string;
+  avatar: string | null;
+  role: string;
+  status: string;
+};
