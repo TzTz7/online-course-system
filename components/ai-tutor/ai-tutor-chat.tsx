@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react"
 import { useChat } from "@ai-sdk/react"
 import { DefaultChatTransport } from "ai"
 import ReactMarkdown from "react-markdown"
-import { Brain, Send, BookOpen, Lightbulb, HelpCircle, Sparkles, User, Bot, Loader2 } from "lucide-react"
+import { Brain, Send, BookOpen, Lightbulb, HelpCircle, Sparkles, User, Bot, AlertCircle } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
 
@@ -32,10 +32,17 @@ function getMessageText(msg: { parts?: Array<{ type: string; text?: string }> })
 
 export function AiTutorChat() {
   const [activeSubject, setActiveSubject] = useState("math")
+  const [error, setError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const { messages, sendMessage, status, setMessages } = useChat({
-    transport: new DefaultChatTransport({ api: "/api/chat" }),
+    transport: new DefaultChatTransport({ 
+      api: "/api/chat",
+      onError: (err) => {
+        console.error("Chat error:", err)
+        setError(err.message || "AI 连接失败，请检查 Ollama 是否运行")
+      }
+    }),
   })
 
   const [input, setInput] = useState("")
@@ -43,11 +50,12 @@ export function AiTutorChat() {
   const isStreaming = status === "streaming" || status === "submitted"
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+    messagesEndRef.current?.scrollIntoView({ behavior: "auto" })
   }, [messages])
 
   const handleSend = () => {
     if (!input.trim() || isStreaming) return
+    setError(null)  // 清除错误状态
     const text = input
     setInput("")
     sendMessage({ text })
@@ -55,6 +63,7 @@ export function AiTutorChat() {
 
   const handleQuickQuestion = (text: string) => {
     if (isStreaming) return
+    setError(null)  // 清除错误状态
     sendMessage({ text })
   }
 
@@ -120,83 +129,89 @@ export function AiTutorChat() {
         )}
 
         {messages.length === 0 && isStreaming && (
-          <div className="flex gap-3">
-            <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-primary text-primary-foreground shrink-0">
-              <Bot className="w-4 h-4" />
-            </div>
-            <div className="bg-card border border-border rounded-2xl rounded-tl-md px-4 py-3">
-              <div className="flex items-center gap-2">
-                <span className="flex gap-1">
-                  <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                  <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                  <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                </span>
-                <span className="text-xs text-muted-foreground">思考中...</span>
-              </div>
+          <div className="flex flex-col items-center justify-center py-8">
+            <div className="flex items-center gap-2 bg-card border border-border rounded-full px-4 py-2">
+              <span className="flex gap-1">
+                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+              </span>
+              <span className="text-xs text-muted-foreground">思考中...</span>
             </div>
           </div>
         )}
 
-        {messages.map((msg) => {
+        {/* 渲染消息 */}
+        {messages.map((msg, index) => {
           const text = getMessageText(msg)
           if (!text) return null
           const isUser = msg.role === "user"
+          const userMessages = messages.filter(m => m.role === "user")
+          const isLastUserMessage = isUser && userMessages[userMessages.length - 1]?.id === msg.id
+          
           return (
-            <div key={msg.id} className={cn("flex gap-3", isUser && "flex-row-reverse")}>
-              <div className={cn(
-                "flex items-center justify-center w-8 h-8 rounded-xl shrink-0",
-                isUser ? "bg-secondary text-secondary-foreground" : "bg-primary text-primary-foreground"
-              )}>
-                {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+            <div key={msg.id}>
+              <div className={cn("flex gap-3", isUser && "flex-row-reverse")}>
+                <div className={cn(
+                  "flex items-center justify-center w-8 h-8 rounded-xl shrink-0",
+                  isUser ? "bg-secondary text-secondary-foreground" : "bg-primary text-primary-foreground"
+                )}>
+                  {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
+                </div>
+                <div className={cn(
+                  "max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
+                  isUser
+                    ? "bg-primary text-primary-foreground rounded-tr-md"
+                    : "bg-card border border-border text-card-foreground rounded-tl-md"
+                )}>
+                  {isUser ? (
+                    <div className="whitespace-pre-wrap">{text}</div>
+                  ) : (
+                    <ReactMarkdown 
+                      components={{
+                        h1: ({node, ...props}) => <h1 className="text-lg font-bold mb-2" {...props} />,
+                        h2: ({node, ...props}) => <h2 className="text-base font-bold mb-2" {...props} />,
+                        h3: ({node, ...props}) => <h3 className="text-sm font-bold mb-1" {...props} />,
+                        p: ({node, ...props}) => <p className="mb-2" {...props} />,
+                        ul: ({node, ...props}) => <ul className="list-disc list-inside mb-2 space-y-1" {...props} />,
+                        ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-2 space-y-1" {...props} />,
+                        li: ({node, ...props}) => <li className="ml-2" {...props} />,
+                        code: ({node, inline, ...props}) => inline 
+                          ? <code className="bg-secondary px-1 py-0.5 rounded text-xs" {...props} />
+                          : <code className="block bg-secondary p-2 rounded text-xs overflow-x-auto" {...props} />,
+                        pre: ({node, ...props}) => <pre className="bg-secondary p-3 rounded-lg overflow-x-auto mb-2 text-xs" {...props} />,
+                        strong: ({node, ...props}) => <strong className="font-bold" {...props} />,
+                        em: ({node, ...props}) => <em className="italic" {...props} />,
+                      }}
+                    >
+                      {text}
+                    </ReactMarkdown>
+                  )}
+                </div>
               </div>
-              <div className={cn(
-                "max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed",
-                isUser
-                  ? "bg-primary text-primary-foreground rounded-tr-md"
-                  : "bg-card border border-border text-card-foreground rounded-tl-md"
-              )}>
-                {isUser ? (
-                  <div className="whitespace-pre-wrap">{text}</div>
-                ) : (
-                  <ReactMarkdown 
-                    components={{
-                      h1: ({node, ...props}) => <h1 className="text-lg font-bold mb-2" {...props} />,
-                      h2: ({node, ...props}) => <h2 className="text-base font-bold mb-2" {...props} />,
-                      h3: ({node, ...props}) => <h3 className="text-sm font-bold mb-1" {...props} />,
-                      p: ({node, ...props}) => <p className="mb-2" {...props} />,
-                      ul: ({node, ...props}) => <ul className="list-disc list-inside mb-2 space-y-1" {...props} />,
-                      ol: ({node, ...props}) => <ol className="list-decimal list-inside mb-2 space-y-1" {...props} />,
-                      li: ({node, ...props}) => <li className="ml-2" {...props} />,
-                      code: ({node, inline, ...props}) => inline 
-                        ? <code className="bg-secondary px-1 py-0.5 rounded text-xs" {...props} />
-                        : <code className="block bg-secondary p-2 rounded text-xs overflow-x-auto" {...props} />,
-                      pre: ({node, ...props}) => <pre className="bg-secondary p-3 rounded-lg overflow-x-auto mb-2 text-xs" {...props} />,
-                      strong: ({node, ...props}) => <strong className="font-bold" {...props} />,
-                      em: ({node, ...props}) => <em className="italic" {...props} />,
-                    }}
-                  >
-                    {text}
-                  </ReactMarkdown>
-                )}
-              </div>
+              
+              {/* 思考动画 - 固定在用户最后一条消息下方 */}
+              {isLastUserMessage && isStreaming && (
+                <div className="flex justify-center py-2">
+                  <div className="flex items-center gap-2 bg-card border border-border rounded-full px-4 py-2">
+                    <span className="flex gap-1">
+                      <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
+                      <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
+                      <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
           )
         })}
 
-        {isStreaming && messages.length > 0 && !getMessageText(messages[messages.length - 1]) && (
-          <div className="flex gap-3">
-            <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-primary text-primary-foreground shrink-0">
-              <Bot className="w-4 h-4" />
-            </div>
-            <div className="bg-card border border-border rounded-2xl rounded-tl-md px-4 py-3">
-              <div className="flex items-center gap-2">
-                <span className="flex gap-1">
-                  <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
-                  <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
-                  <span className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></span>
-                </span>
-                <span className="text-xs text-muted-foreground">思考中</span>
-              </div>
+        {/* 错误提示 */}
+        {error && (
+          <div className="flex flex-col items-center justify-center py-4">
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-full px-4 py-2">
+              <AlertCircle className="w-4 h-4 text-red-500" />
+              <span className="text-xs text-red-600">{error}</span>
             </div>
           </div>
         )}
