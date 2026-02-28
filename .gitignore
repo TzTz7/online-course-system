@@ -12,7 +12,8 @@
 
 # testing
 /coverage
-
+# 静态资源/产物
+public/ 
 # next.js
 /.next/
 /out/
